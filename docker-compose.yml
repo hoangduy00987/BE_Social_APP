@@ -97,6 +97,28 @@ services:
     networks:
       - app-network
 
+  ai-service:
+    build: ./ai-service
+    container_name: ai-service
+    ports:
+      - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      - PORT=8000
+      - DATABASE_URL=${USER_DATABASE_URL}
+      - ACCESS_SECRET=${ACCESS_SECRET}
+      - REFRESH_SECRET=${REFRESH_SECRET}
+      - ACCESS_EXPIRES=${ACCESS_EXPIRES}
+      - REFRESH_EXPIRES=${REFRESH_EXPIRES}
+      - CORS_ORIGINS=${CORS_ALLOWED_ORIGIN}
+      - BASE_URL=${BASE_URL}
+    volumes:
+      - /var/www/uploads:/app/uploads
+    networks:
+      - app-network
+
   # ==========================
   # POST MIGRATION (RUN FIRST)
   # ==========================
