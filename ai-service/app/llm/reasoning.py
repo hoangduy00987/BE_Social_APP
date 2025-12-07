@@ -9,7 +9,7 @@ def detect_claim_category(claim: str) -> str:
     base_dir = os.path.dirname(os.path.abspath(__file__))
     csv_path = os.path.join(base_dir, "category.csv")
 
-    print("📌 Đang load Category CSV từ:", csv_path)
+    print(" Đang load Category CSV từ:", csv_path)
 
     # Check tồn tại file
     if not os.path.exists(csv_path):
@@ -33,7 +33,7 @@ def detect_claim_category(claim: str) -> str:
     """
 
     completion = client.chat.completions.create(
-        model="GPT‑4o mini",
+        model="gpt-4o-mini",
         messages=[{"role": "user", "content": prompt}],
         temperature=0
     )
@@ -82,7 +82,7 @@ def llm_filter_evidence(claim, triples, claim_category):
     """
 
     completion = client.chat.completions.create(
-        model="GPT‑4o mini",
+        model="gpt-4o-mini",
         messages=[{"role": "user", "content": prompt}],
         temperature=0
     )
@@ -150,7 +150,7 @@ Chỉ mô tả lại sự kiện một cách mạch lạc, dễ hiểu và logic
     """
 
     completion = client.chat.completions.create(
-    model="GPT‑4o mini",
+    model="gpt-4o-mini",
     messages=[
         {"role": "user", "content": prompt}
     ]
