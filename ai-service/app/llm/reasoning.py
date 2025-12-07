@@ -1,6 +1,117 @@
 import json
 import re
 from .llm_client import client  # client = OpenAI(api_key=...)
+import os
+import json
+import pandas as pd
+
+def detect_claim_category(claim: str) -> str:
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    csv_path = os.path.join(base_dir, "category.csv")
+
+    print("📌 Đang load Category CSV từ:", csv_path)
+
+    # Check tồn tại file
+    if not os.path.exists(csv_path):
+        print("❌ Không tìm thấy category.csv")
+        return None
+    # Load CSV
+    df = pd.read_csv(csv_path)
+    categories = df['category'].dropna().str.strip().unique().tolist()
+
+    categories_text = ", ".join(categories)
+
+    prompt = f"""
+    Bạn là hệ thống phân loại tin tức theo lĩnh vực.
+
+    Claim: "{claim}"
+
+    Các lĩnh vực hiện có:
+    {categories_text}
+
+    Chỉ trả về duy nhất tên lĩnh vực phù hợp nhất.
+    """
+
+    completion = client.chat.completions.create(
+        model="gpt-5.1",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0
+    )
+
+    return completion.choices[0].message.content.strip()
+
+
+def llm_filter_evidence(claim, triples, claim_category):
+    print("\n=== FILTER BY CATEGORY STEP ===")
+    print("Category detected for claim:", claim_category)
+
+    # 1️⃣ Lọc triples theo category phù hợp trước khi gọi LLM
+    category_filtered = []
+    for t in triples:
+        cat = t.get("category", "")
+        if claim_category in cat:
+            category_filtered.append(t)
+
+    print("\nTriples after category filtering:")
+    print(json.dumps(category_filtered, indent=2, ensure_ascii=False))
+
+    # Nếu lọc hết → fallback giữ tất cả triples
+    if not category_filtered:
+        print("\n⚠ No category matched — fallback to all triples")
+        category_filtered = triples
+
+    # 2️⃣ Chỉ gửi evidence text sang LLM
+    evidence_sentences = [
+        t.get("evidence", "") for t in category_filtered if t.get("evidence")
+    ]
+
+    print("\nEvidence sent to LLM:")
+    print(json.dumps(evidence_sentences, indent=2, ensure_ascii=False))
+
+    # Prompt lọc theo nội dung
+    prompt = f"""
+    Claim:
+    "{claim}"
+
+    Dưới đây là các câu evidence đã qua bước lọc theo category:
+    {json.dumps(evidence_sentences, ensure_ascii=False)}
+
+    Nhiệm vụ:
+    - Chỉ giữ lại những câu liên quan trực tiếp để kiểm chứng claim
+    - Trả về JSON LIST duy nhất gồm các câu evidence phù hợp
+    """
+
+    completion = client.chat.completions.create(
+        model="gpt-5.1",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0
+    )
+
+    resp = completion.choices[0].message.content.strip()
+    cleaned = re.sub(r"```json|```", "", resp).strip()
+
+    try:
+        selected_sentences = json.loads(cleaned)
+    except:
+        print("\n⚠ Parse failed — fallback to category-filtered triples")
+        return category_filtered
+
+    # Map sentence → triple
+    final = []
+    for s in selected_sentences:
+        for t in category_filtered:
+            if s == t.get("evidence"):
+                final.append(t)
+                break
+
+    print("\n=== FINAL TRIPLES SELECTED:")
+    print(json.dumps(final, indent=2, ensure_ascii=False))
+
+    return final
+
+
+
+
 
 def llm_reasoning(claim: str, evidence: str):
     prompt = f"""
@@ -30,12 +141,16 @@ def llm_reasoning(claim: str, evidence: str):
     Hãy trả về JSON với cấu trúc:
     {{
         "verdict": "TRUE | FALSE | NEI",
-        "explanation": "Lời giải thích tự nhiên và thuyết phục dựa trên facts."
+        "explanation": ""Lời giải thích phải tự nhiên như người thật, chỉ tập trung vào nội dung của claim và thông tin đã cho. 
+Không nhắc đến 'Knowledge Graph', 'bằng chứng', 'dữ liệu', 'nguồn', 'hệ thống', 
+hay bất kỳ yếu tố kỹ thuật nào. 
+Chỉ mô tả lại sự kiện một cách mạch lạc, dễ hiểu và logic như đang tường thuật lại nội dung."
+"
     }}
     """
 
     completion = client.chat.completions.create(
-    model="gpt-4.1-mini",
+    model="gpt-5.1",
     messages=[
         {"role": "user", "content": prompt}
     ]
